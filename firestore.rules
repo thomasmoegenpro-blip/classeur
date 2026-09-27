@@ -1,0 +1,41 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Code -> classe. Lecture publique nécessaire pour vérifier un code
+    // au moment de l'inscription (avant que l'élève ait un compte).
+    // Écriture bloquée : une classe s'ajoute uniquement depuis la console Firebase.
+    match /invitations/{code} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Profil d'un élève (pseudo + classe). Chacun ne modifie que le sien.
+    match /users/{uid} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null && request.auth.uid == uid;
+      allow delete: if false;
+    }
+
+    // Fiches de révision : visibles par tout élève connecté,
+    // création possible uniquement dans sa propre classe,
+    // suppression réservée à l'auteur.
+    match /fiches/{ficheId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+        && request.resource.data.auteurUid == request.auth.uid
+        && request.resource.data.classe == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.classe;
+      allow update: if request.auth != null; // votes (pouce haut/bas)
+      allow delete: if request.auth != null && resource.data.auteurUid == request.auth.uid;
+    }
+
+    // Messages de chat : uniquement visibles/écrits par les élèves de la même classe.
+    match /chat/{msgId} {
+      allow read: if request.auth != null
+        && resource.data.classe == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.classe;
+      allow create: if request.auth != null
+        && request.resource.data.auteurUid == request.auth.uid
+        && request.resource.data.classe == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.classe;
+    }
+  }
+}
